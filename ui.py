@@ -69,7 +69,7 @@ class String():
         index = comboBox.findText(self.noteName, QtCore.Qt.MatchFixedString)
         comboBox.setCurrentIndex(index)
         comboBox.setFixedWidth(col0Width)
-        comboBox.currentIndexChanged.connect(self.changeBaseNote)
+        comboBox.currentIndexChanged.connect(self.changeBaseNoteByIndex)
         return comboBox
 
        
@@ -84,7 +84,11 @@ class String():
             fret.subscribe(self)
             self.frets.append(fret)
 
-    def changeBaseNote(self, i):
+    def changeBaseNote(self, noteName: str):
+        index = self.noteSelector.findText(noteName, QtCore.Qt.MatchFixedString)
+        self.noteSelector.setCurrentIndex(index)
+
+    def changeBaseNoteByIndex(self, i: int):
         self.noteName = basicNotes[i]
         self.redrawString(self.stringIndex)
         
@@ -140,6 +144,14 @@ class FretBoard():
         for string in self.strings:
             for fret in string.frets:
                 fret.button.setChecked(False)  
+
+    def setTuning(self, tuning: List[str]):
+        self.tuning = tuning
+        for string, noteName in zip(reversed(self.strings), self.tuning):
+            string.changeBaseNote(noteName)
+
+    def resetTuning(self):
+        self.setTuning(standardTuning)
         
 
 def newVLine(i: int):
@@ -225,14 +237,13 @@ class MainWindow(QWidget):
 
         self.pbClearAll = QPushButton("Clear all")
         hboxControls.addWidget(self.pbClearAll)
+        self.pbSetTuning = QPushButton("Reset tuning")
+        hboxControls.addWidget(self.pbSetTuning)
 
         vbox1.addLayout(hboxControls)
         self.createFretboard(vbox1)
         self.pbClearAll.clicked.connect(self.fretBoard.clearAll)
-
-        #hbox1.addWidget(b2)
-        #hbox1.addWidget(b1)
-        #hbox1.addWidget(fret1.button)
+        self.pbSetTuning.clicked.connect(self.fretBoard.resetTuning)
 
         self.setLayout(vbox1)    
         self.show()
