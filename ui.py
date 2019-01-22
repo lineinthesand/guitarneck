@@ -92,18 +92,26 @@ class String():
         self.noteName = basicNotes[i]
         self.redrawString(self.stringIndex)
         
-
     def redrawString(self, stringIndex: int):
+        startNote = dropwhile(lambda x: x != self.noteName, notesCycle)
+        notesInString = islice(startNote, None, self.numberFrets + 1)
+        for noteName, fret in zip(notesInString, self.frets):
+            fret.button.setText(noteName)
+            fret.noteName = noteName
+            for subscriber in self.subscribers:
+                fret.button.setChecked(fret.noteName in subscriber.markedNotes)
+
+        for subscriber in self.subscribers:
+            if fret.noteName in subscriber.markedNotes:
+                fret.button.setChecked(True)
+
+    def recreateString(self, stringIndex: int):
         layout = self.frets[0].button.getParentLayout()
         for i in reversed(range(1, layout.count())): 
             layout.itemAt(i).widget().setParent(None)
         self.frets.clear()
         self.addFrets(self.numberFrets + 1)
         self.drawString(layout)
-        #for fret in reversed(self.frets): 
-        #    fret.button.setParent(None)
-        #for subscriber in self.subscribers:
-        #    subscriber.redrawString(stringIndex)
 
     def notifyNoteToggle(self, noteName: str, checked: bool):
         for subscriber in self.subscribers:
@@ -125,10 +133,6 @@ class FretBoard():
     def subscribe(self, subscriber):
         self.subscribers.append(subscriber)
 
-    def redrawString(self, stringIndex: int):
-        for subscriber in self.subscribers:
-           subscriber.redrawString(stringIndex)
-    
     def toggleNoteGlobal(self, noteName: str, checked: bool):
         if checked:
             self.markedNotes.add(noteName)
@@ -144,6 +148,7 @@ class FretBoard():
         for string in self.strings:
             for fret in string.frets:
                 fret.button.setChecked(False)  
+        self.markedNotes.clear()
 
     def setTuning(self, tuning: List[str]):
         self.tuning = tuning
@@ -219,13 +224,6 @@ class MainWindow(QWidget):
         vbox1.addLayout(self.stringsLayout)
         vbox1.addLayout(fretLabelsBottom)
 
-    def redrawString(self, stringIndex: int):
-        stringLayout = self.stringsLayout.itemAt(stringIndex).widget()
-        for i in reversed(range(stringLayout.count())): 
-            stringLayout.itemAt(i).widget().setParent(None)
-        
-
-        
     def initUI(self):
         
         self.col = QColor(0, 0, 0)
