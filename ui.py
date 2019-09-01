@@ -9,7 +9,7 @@ basicNotes: List[str] = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', '
 notesCycle = cycle(basicNotes)
 standardTuning: List[str] = ['E', 'A', 'D', 'G', 'B', 'E']
 
-intervals: Dict[str, int] = { '1': 0,
+intervalsDict: Dict[str, int] = { '1': 0,
                                'b2': 1,
                                '2': 2,
                                '#2': 3,
@@ -24,6 +24,10 @@ intervals: Dict[str, int] = { '1': 0,
                                'b7': 10,
                                '7': 11,
                              }
+
+scalesGlobal: Dict[str, List[str]] = {
+        'Melodic Minor': ['1', '2', 'b3', '4', '5', '6', '7'],
+}
 
 melodicMinor: List[str] = ['1', '2', 'b3', '4', '5', '6', '7']
 
@@ -124,7 +128,7 @@ class String():
         for currentFretIndex, currentFret in enumerate(self.frets):
             if currentFret.noteName == noteName:
                 currentDelta = abs(currentFretIndex - fretIndex)
-                if currentDelta < delta:
+                if currentDelta <= delta:
                     delta = currentDelta
                     fret = currentFret
         return fret
@@ -170,7 +174,7 @@ class String():
     def changeBaseNoteByIndex(self, i: int):
         self.noteName = basicNotes[i]
         self.redrawString(self.stringIndex)
-        
+
     def redrawString(self, stringIndex: int):
         startNote = dropwhile(lambda x: x != self.noteName, notesCycle)
         notesInString = islice(startNote, None, self.numberFrets + 1)
@@ -232,13 +236,35 @@ class FretBoard():
     def addScale(self, stringIndex: int, fretIndex: int, noteName: str, individualMarked: bool):
 
         startNote = dropwhile(lambda x: x != noteName, notesCycle)
-        notesInString = [note for note in islice(startNote, None, 12)]
-        scaleIntervals = [intervals[interval] for interval in melodicMinor]
-        notesInScale: List = [notesInString[interval] for interval in scaleIntervals]
-        notesInScaleCycle = cycle(notesInScale)
+        notesInString = cycle(startNote)
+        #notesInString = [note for note in islice(startNote, None, 12)]
+        scaleName = self.subscribers[0].comboBoxScales.currentText()
+        scaleIntervals = [intervalsDict[interval] for interval in scalesGlobal[scaleName]]
+        intervals = len(scaleIntervals)
+        print(intervals)
+        scaleIntervals_extended = list(islice(cycle(scaleIntervals), 0, len(scaleIntervals) + 1))
+        print(len(scaleIntervals_extended))
+        scaleIntervals_extended[intervals] += 12
+        print("scaleIntervals_extended", scaleIntervals_extended)
+        intervalDeltas: List[int] = []
+        for i, interval in enumerate(scaleIntervals_extended[1:]):
+            intervalDeltas.append(interval - scaleIntervals[i])
+
+        mode = self.subscribers[0].comboBoxModes.currentIndex()
+        modeDeltas = islice(cycle(intervalDeltas), mode, mode + intervals)
+
+
+        note = next(notesInString)
+        notesInMode: List = [note]
+        for delta in modeDeltas:
+            for j in range(delta):
+                note = next(notesInString)
+            notesInMode.append(note)
+
+        notesInModeCycle = cycle(notesInMode[:intervals])
         for string in self.strings[stringIndex::-1]:
             for i in range(3):
-                currentNoteName = next(notesInScaleCycle)
+                currentNoteName = next(notesInModeCycle)
                 currentFret = string.findNextNote(fretIndex, currentNoteName)
                 currentFret.button.setIndividualMarked(True)
 
@@ -329,6 +355,10 @@ class MainWindow(QWidget):
         vbox1.addLayout(self.stringsLayout)
         vbox1.addLayout(fretLabelsBottom)
 
+    def changeScaleByIndex(self, i: int):
+        self.noteName = basicNotes[i]
+        self.redrawString(self.stringIndex)
+        
     def initUI(self):
         
         self.col = QColor(0, 0, 0)
@@ -345,11 +375,34 @@ class MainWindow(QWidget):
         self.pbSetTuning = QPushButton("Reset tuning")
         hboxControls.addWidget(self.pbSetTuning)
 
+        hboxScales = QHBoxLayout()
+
+        lbScales = QLabel()
+        lbScales.setText("Current Scale:")
+        lbScales.setAlignment(QtCore.Qt.AlignRight)
+
+        comboBoxScales = QComboBox()
+        comboBoxScales.addItems(scalesGlobal.keys())
+        comboBoxScales.currentIndexChanged.connect(self.changeScaleByIndex)
+
+        lbModes = QLabel()
+        lbModes.setText("Current Mode:")
+        comboBoxModes = QComboBox()
+        for i, interval in enumerate(scalesGlobal[comboBoxScales.currentText()]):
+            comboBoxModes.addItem(str(i+1))
+        hboxScales.addWidget(lbScales)
+        hboxScales.addWidget(comboBoxScales)
+        self.comboBoxScales = comboBoxScales
+        hboxScales.addWidget(lbModes)
+        hboxScales.addWidget(comboBoxModes)
+        self.comboBoxModes = comboBoxModes
+
         vbox1.addLayout(hboxControls)
         self.createFretboard(vbox1)
         self.pbClearAllGlobal.clicked.connect(self.fretBoard.clearAllGlobal)
         self.pbClearAllIndividual.clicked.connect(self.fretBoard.clearAllIndividual)
         self.pbSetTuning.clicked.connect(self.fretBoard.resetTuning)
+        vbox1.addLayout(hboxScales)
 
         self.setLayout(vbox1)    
         self.show()
