@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import (QWidget, QPushButton, QLabel, QComboBox,
 from PyQt5.QtGui import QIcon, QColor 
 from typing import List, Set, Dict
 from itertools import cycle, islice, dropwhile
+from style import FretStyle
+import drawSvg as dsvg
 
 basicNotes: List[str] = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#']
 notesCycle = cycle(basicNotes)
@@ -35,6 +37,9 @@ melodicMinor: List[str] = ['1', '2', 'b3', '4', '5', '6', '7']
 
 buttonWidth = 45
 col0Width = 60
+
+stringColor = '#0000aa'
+stringWidth = 3
 
 class Scale():
     def __init__(self, notes: int):
@@ -73,6 +78,7 @@ class FretButton(QPushButton):
 
     def getParentLayout(self):
         return self.__parentLayout
+    
 
 class Fret():
     def __init__(self, fretIndex: int, noteName: str):
@@ -82,6 +88,7 @@ class Fret():
         self.fretIndex: int = fretIndex
         #self.parentString: String = parentString
         self.button = FretButton(self.noteName)
+        self._individualMarked: bool = self.button.individualMarked
         self.button.setFixedWidth(buttonWidth)
         self.button.setCheckable(True)
         #self.button.setStyleSheet("QPushButton:checked { background-color: red;border:5px solid rgb(255, 170, 255); }")
@@ -92,16 +99,17 @@ class Fret():
         self.button.clicked[bool].connect(self.notifyNoteToggle)
         self.button.rightClicked[bool].connect(self.toggleIndividualMarked)
         self.button.middleClicked[bool].connect(self.addScale)
+        self.fretStyle: FretStyle = FretStyle()
+
+    @property
+    def individualMarked(self):
+        return self.button.individualMarked
 
     def subscribe(self, subscriber):
         self.subscribers.append(subscriber)
 
     def toggleIndividualMarked(self, individualMarked: bool):
         self.button.toggleIndividualMarked()
-        pass
-        #print(self.noteName, individualMarked)
-
-
  
     def notifyNoteToggle(self, checked: bool):
          
@@ -114,6 +122,23 @@ class Fret():
             # notify String
             subscriber.addScale(self.fretIndex, self.noteName, individualMarked)
 
+    def drawNote(self, d: dsvg.Drawing, x: float, y: float) -> float:
+        fs = self.fretStyle
+        if self.individualMarked:
+            textY = y - fs.fontSize / 4.0
+            #d.append(draw.Line(x, y,
+            #                   x + fretWidth, y,
+            #                   stroke_width = stringWidth,
+            #                   stroke = stringColor))
+            d.append(dsvg.Circle(x + fs.circleX, y, fs.radius,
+                        fill = fs.circleFillColor, stroke_width=2, stroke = fs.circleStrokeColor))
+            
+            d.append(dsvg.Text(self.noteName, 
+                fs.fontSize, x + fs.circleX, textY, 
+                fill = fs.circleStrokeColor, 
+                center = False, text_anchor = 'middle'))
+        return fs.fretWidth
+
 
 class String():
     def __init__(self, index: int, noteName: str, numberFrets: int):
@@ -125,6 +150,12 @@ class String():
        self.addFrets(numberFrets + 1)
        self.numberFrets: int = numberFrets
 
+    def drawCurrentMarked(self, d: dsvg.Drawing, lowerFret: int, upperFret: int, 
+                                x: float, y: float) -> float: 
+        for fret in self.frets[lowerFret:upperFret+1]:
+            x += fret.drawNote(d, x, y)
+        return self.frets[0].fretStyle.fretHeight
+
     def findNextNote(self, fretIndex: int, noteName: str) -> Fret:
         delta = 24
         for currentFretIndex, currentFret in enumerate(self.frets):
@@ -135,11 +166,20 @@ class String():
                     fret = currentFret
         return fret
 
+    def getMarkedRange(self) -> (int, int):
+        lowerFret = 24
+        upperFret = 0
+        for i, fret in enumerate(self.frets):
+            if fret.individualMarked:
+                lowerFret = min(i, lowerFret)
+                upperFret = max(i, upperFret)
+        return lowerFret, upperFret
+
     def subscribe(self, subscriber):
         # subscribe String
         self.subscribers.append(subscriber)
 
-    def drawString(self, hbox1: QHBoxLayout):
+    def displayString(self, hbox1: QHBoxLayout):
         for i, fret in enumerate(self.frets):
             hbox1.addWidget(fret.button)
             fret.button.setParentLayout(hbox1)
@@ -174,9 +214,9 @@ class String():
 
     def changeBaseNoteByIndex(self, i: int):
         self.noteName = basicNotes[i]
-        self.redrawString(self.stringIndex)
+        self.redisplayString(self.stringIndex)
 
-    def redrawString(self, stringIndex: int):
+    def redisplayString(self, stringIndex: int):
         startNote = dropwhile(lambda x: x != self.noteName, notesCycle)
         notesInString = islice(startNote, None, self.numberFrets + 1)
         for noteName, fret in zip(notesInString, self.frets):
@@ -195,7 +235,7 @@ class String():
             layout.itemAt(i).widget().setParent(None)
         self.frets.clear()
         self.addFrets(self.numberFrets + 1)
-        self.drawString(layout)
+        self.displayString(layout)
 
     def notifyNoteToggle(self, noteName: str, checked: bool):
         for subscriber in self.subscribers:
@@ -221,6 +261,15 @@ class FretBoard():
             string.subscribe(self)
             self.strings.append(string)
 
+    def drawCurrentMarked(self, width: float, height: float) -> dsvg.Drawing:
+        d = dsvg.Drawing(width, height, origin = (0, 0))
+        y = 30
+        lowerFret, upperFret = self.getMarkedRange()
+        for string in self.strings[::-1]:
+            x = 0
+            y += string.drawCurrentMarked(d, lowerFret, upperFret, x, y)
+        return d
+
     def subscribe(self, subscriber):
         self.subscribers.append(subscriber)
 
@@ -234,6 +283,7 @@ class FretBoard():
             for fret in string.frets:
                 if fret.button.text() == noteName:
                     fret.button.setChecked(checked)  
+
     def addScale(self, stringIndex: int, fretIndex: int, noteName: str, individualMarked: bool):
 
         startNote = dropwhile(lambda x: x != noteName, notesCycle)
@@ -274,6 +324,20 @@ class FretBoard():
                 currentNoteName = next(notesInModeCycle)
                 currentFret = string.findNextNote(fretIndex, currentNoteName)
                 currentFret.button.setIndividualMarked(True)
+
+        d = self.drawCurrentMarked(600, 600)
+        d.setPixelScale(1)
+        d.savePng('example.png')
+
+    def getMarkedRange(self) -> (int, int):
+        lowerFret = 24
+        upperFret = 0
+        for string in self.strings:
+            lowerFretCurrent, upperFretCurrent = string.getMarkedRange()
+            lowerFret = min(lowerFretCurrent, lowerFret)
+            upperFret = max(upperFretCurrent, upperFret)
+        return lowerFret, upperFret
+            
 
     def clearAllGlobal(self):
         for string in self.strings:
@@ -356,7 +420,7 @@ class MainWindow(QWidget):
 
             hbox1.addWidget(string.noteSelector)
             
-            string.drawString(hbox1)
+            string.displayString(hbox1)
 
             self.stringsLayout.addLayout(hbox1)
         vbox1.addLayout(self.stringsLayout)
@@ -364,7 +428,7 @@ class MainWindow(QWidget):
 
     def changeScaleByIndex(self, i: int):
         self.noteName = basicNotes[i]
-        self.redrawString(self.stringIndex)
+        self.redisplayString(self.stringIndex)
         
     def initUI(self):
         
