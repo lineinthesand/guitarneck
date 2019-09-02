@@ -263,7 +263,7 @@ class FretBoard():
 
     def drawCurrentMarked(self, width: float, height: float) -> dsvg.Drawing:
         d = dsvg.Drawing(width, height, origin = (0, 0))
-        y = 30
+        y = 30 
         lowerFret, upperFret = self.getMarkedRange()
         for string in self.strings[::-1]:
             x = 0
