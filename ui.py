@@ -27,6 +27,8 @@ intervalsDict: Dict[str, int] = { '1': 0,
 
 scalesGlobal: Dict[str, List[str]] = {
         'Melodic Minor': ['1', '2', 'b3', '4', '5', '6', '7'],
+        'Harmonic Minor': ['1', '2', 'b3', '4', '5', '#5', '7'],
+        'Major': ['1', '2', '3', '4', '5', '6', '7'],
 }
 
 melodicMinor: List[str] = ['1', '2', 'b3', '4', '5', '6', '7']
@@ -161,7 +163,6 @@ class String():
         for fretIndex, note in enumerate(notesInString):
             fret: Fret = Fret(fretIndex, note)
             for subscriber in self.subscribers:
-                print(type(subscriber))
                 if fret.noteName in subscriber.markedNotesGlobal:
                     fret.button.setChecked(True)
             fret.subscribe(self)
@@ -237,23 +238,28 @@ class FretBoard():
 
         startNote = dropwhile(lambda x: x != noteName, notesCycle)
         notesInString = cycle(startNote)
-        #notesInString = [note for note in islice(startNote, None, 12)]
+
         scaleName = self.subscribers[0].comboBoxScales.currentText()
+        # scaleIntervals has as many notes as there are in the scale
         scaleIntervals = [intervalsDict[interval] for interval in scalesGlobal[scaleName]]
         intervals = len(scaleIntervals)
-        print(intervals)
+        # scaleIntervals_extended has one more note, i.e. the root note duplicated
         scaleIntervals_extended = list(islice(cycle(scaleIntervals), 0, len(scaleIntervals) + 1))
-        print(len(scaleIntervals_extended))
         scaleIntervals_extended[intervals] += 12
-        print("scaleIntervals_extended", scaleIntervals_extended)
-        intervalDeltas: List[int] = []
+
+        # calculate the halfstep deltas between adjacent notes
+        # this is the relative (inner) structure of the scale which can be shifted
+        # to get the individual modes
+        halfstepDeltas: List[int] = []
         for i, interval in enumerate(scaleIntervals_extended[1:]):
-            intervalDeltas.append(interval - scaleIntervals[i])
+            halfstepDeltas.append(interval - scaleIntervals[i])
 
+
+        # shift the deltas to the selected mode
         mode = self.subscribers[0].comboBoxModes.currentIndex()
-        modeDeltas = islice(cycle(intervalDeltas), mode, mode + intervals)
+        modeDeltas = islice(cycle(halfstepDeltas), mode, mode + intervals)
 
-
+        # construct the notes in the mode
         note = next(notesInString)
         notesInMode: List = [note]
         for delta in modeDeltas:
@@ -261,6 +267,7 @@ class FretBoard():
                 note = next(notesInString)
             notesInMode.append(note)
 
+        # now mark the mode in a three notes per string fashion
         notesInModeCycle = cycle(notesInMode[:intervals])
         for string in self.strings[stringIndex::-1]:
             for i in range(3):
@@ -383,7 +390,7 @@ class MainWindow(QWidget):
 
         comboBoxScales = QComboBox()
         comboBoxScales.addItems(scalesGlobal.keys())
-        comboBoxScales.currentIndexChanged.connect(self.changeScaleByIndex)
+        #comboBoxScales.currentIndexChanged.connect(self.changeScaleByIndex)
 
         lbModes = QLabel()
         lbModes.setText("Current Mode:")
