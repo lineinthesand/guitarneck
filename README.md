@@ -10,4 +10,4 @@ Notes on the fretboard can be marked:
 - a right click marks an individual note
 - a middle click on a note on the lowest string marks notes of the currently selected scale/mode in a three-notes-per-string manner in the current position
   Furthermore, it generates a labeled diagram of that scale (currently png, but svg is easily possible; it uses the drawSvg library for that purpose)
-[[example.png|alt=screenshot]]
+![Scale diagram](/example.png?raw=true "Scale diagram generated with guitarneck")
