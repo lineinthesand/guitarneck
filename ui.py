@@ -40,6 +40,8 @@ col0Width = 60
 
 stringColor = '#0000aa'
 stringWidth = 3
+headingFontSize = 26
+headingColor = '#000000'
 
 class Scale():
     def __init__(self, notes: int):
@@ -122,14 +124,29 @@ class Fret():
             # notify String
             subscriber.addScale(self.fretIndex, self.noteName, individualMarked)
 
+    def drawFretNumber(self, d: dsvg.Drawing, x: float, y: float) -> float:
+        fs = self.fretStyle
+
+        textY = y - fs.fontSize / 4.0
+        d.append(dsvg.Text(str(self.fretIndex), 
+                fs.fontSize, x + fs.circleX, textY, 
+                fill = fs.circleStrokeColor, 
+                center = False, text_anchor = 'middle'))
+        return fs.fretWidth
+
+    def drawFret(self, d: dsvg.Drawing, x: float, y: float, strings: int) -> float:
+        fs = self.fretStyle
+        fretBoardHeight = (strings - 1) * fs.fretHeight
+        d.append(dsvg.Line(x, y,
+                           x, y - fretBoardHeight,
+                           stroke_width = stringWidth,
+                           stroke = stringColor))
+        return fs.fretWidth
+
     def drawNote(self, d: dsvg.Drawing, x: float, y: float) -> float:
         fs = self.fretStyle
         if self.individualMarked:
             textY = y - fs.fontSize / 4.0
-            #d.append(draw.Line(x, y,
-            #                   x + fretWidth, y,
-            #                   stroke_width = stringWidth,
-            #                   stroke = stringColor))
             d.append(dsvg.Circle(x + fs.circleX, y, fs.radius,
                         fill = fs.circleFillColor, stroke_width=2, stroke = fs.circleStrokeColor))
             
@@ -149,6 +166,23 @@ class String():
        self.frets: List[Fret] = []
        self.addFrets(numberFrets + 1)
        self.numberFrets: int = numberFrets
+
+    def drawFrets(self, d: dsvg.Drawing, lowerFret: int, upperFret: int, 
+                         x: float, y: float, strings: int):
+        for fret in self.frets[lowerFret: upperFret + 1]:
+            x += fret.drawFret(d, x, y, strings)
+        x += fret.drawFret(d, x, y, strings)
+
+    def drawString(self, d: dsvg.Drawing, lowerFret: int, upperFret: int, 
+                         x: float, y: float) -> float:
+        fs = self.frets[0].fretStyle
+        fretWidth = fs.fretWidth
+        stringLength = (upperFret - lowerFret + 1) * fretWidth
+        d.append(dsvg.Line(x, y,
+                       x + stringLength, y,
+                       stroke_width = stringWidth * pow(1.1, self.stringIndex),
+                       stroke = stringColor))
+        return fs.fretHeight
 
     def drawCurrentMarked(self, d: dsvg.Drawing, lowerFret: int, upperFret: int, 
                                 x: float, y: float) -> float: 
@@ -261,13 +295,52 @@ class FretBoard():
             string.subscribe(self)
             self.strings.append(string)
 
-    def drawCurrentMarked(self, width: float, height: float) -> dsvg.Drawing:
+    def drawFretBoard(self, d: dsvg.Drawing, lowerFret:int, upperFret: int, x: float, y: float):
+        x_cur = x
+        y_cur = y
+        for string in self.strings:
+            y_cur -= string.drawString(d, lowerFret, upperFret, x_cur, y_cur)
+        self.strings[0].drawFrets(d, lowerFret, upperFret, x_cur, y, len(self.strings))
+
+    def drawCurrentMarked(self, d: dsvg.Drawing, lowerFret:int, upperFret: int, x: float, y: float) -> float:
+        y_cur = y
+        for string in self.strings:
+            x_cur = x
+            fretHeight = string.drawCurrentMarked(d, lowerFret, upperFret, x_cur, y_cur)
+            y_cur -= fretHeight
+        return len(self.strings) * fretHeight
+
+    def drawFretNumbers(self, d: dsvg.Drawing, lowerFret: int, upperFret: int, 
+                         x: float, y: float) -> float:
+        x_cur = x
+        string = self.strings[0]
+        for fret in string.frets[lowerFret: upperFret + 1]:
+            x_cur += fret.drawFretNumber(d, x_cur, y)
+        return string.frets[0].fretStyle.fretHeight
+
+    def drawHeading(self, d: dsvg.Drawing, baseNote: str, x: float, y: float) -> float :
+        scaleName = self.subscribers[0].comboBoxScales.currentText()
+        modeName = self.subscribers[0].comboBoxModes.currentText()
+        heading = f"{baseNote} {scaleName}, Mode {modeName}"
+        d.append(dsvg.Text(heading, 
+                headingFontSize, x, y, 
+                fill = headingColor, 
+                center = False, text_anchor = 'left'))
+        return headingFontSize
+
+    def drawDiagram(self, baseNote: str) -> dsvg.Drawing:
+        width = 600
+        height = 600
         d = dsvg.Drawing(width, height, origin = (0, 0))
-        y = 30 
+          
+        x = 30
+        y = 550
+        y -= self.drawHeading(d, baseNote, x, y) + 6
         lowerFret, upperFret = self.getMarkedRange()
-        for string in self.strings[::-1]:
-            x = 0
-            y += string.drawCurrentMarked(d, lowerFret, upperFret, x, y)
+        y -= self.drawFretNumbers(d, lowerFret, upperFret, x, y)
+        self.drawFretBoard(d, lowerFret, upperFret, x, y)
+        y -= self.drawCurrentMarked(d, lowerFret, upperFret, x, y)
+        y -= self.drawFretNumbers(d, lowerFret, upperFret, x, y)
         return d
 
     def subscribe(self, subscriber):
@@ -325,7 +398,10 @@ class FretBoard():
                 currentFret = string.findNextNote(fretIndex, currentNoteName)
                 currentFret.button.setIndividualMarked(True)
 
-        d = self.drawCurrentMarked(600, 600)
+        notesInModeCycle = cycle(notesInMode[:intervals])
+        for i in range(8 - mode):
+            baseNote = next(notesInModeCycle)
+        d = self.drawDiagram(baseNote)
         d.setPixelScale(1)
         d.savePng('example.png')
 
